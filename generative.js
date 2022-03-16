@@ -45,32 +45,57 @@ function linePartition(length, numPartitions, centreVariation = 0, minDeviation 
 	for (let i = 0; i < numMutations; i++) {
 		let index = Math.trunc(Math.random() * numPartitions);
 		let vPos, shift;
+
 		if (deviations[index] === 0) {
+			// Decide which direction to adjust this line's slant.
 			vPos = 1;
 			shift = (-1) ** Math.trunc(Math.random() * 2);
 			deviations[index] = shift;
 		} else {
+			// Alternate moving top and bottom coordinates
 			const numDeviations = Math.abs(deviations[index]);
 			const direction = Math.sign(deviations[index]);
 			vPos = numDeviations % 2 === 0 ? 1 : -1;
-			shift = direction * (-1) * vPos;
+			shift = direction * vPos;
 			deviations[i] = (numDeviations + 1) * direction;
 		}
-		const array = vPos === -1 ? bottomOffsets : topOffsets;
-		let value = array[index] += shift;
-		if (value < minDistance) {
-			array[index] = minDistance;
-		} else if (value > length - minDistance) {
-			array[index] = length - minDistance;
-		} else {
-			while (array[index] > array[index + 1] - minDistance) {
-				index++;
-				array[index]++;
+
+		let array = vPos === -1 ? bottomOffsets : topOffsets;
+		let value = array[index] + shift;
+		if (
+			value < minDistance || value > length - minDistance ||
+			value > array[index + 1] - minDistance || value < array[index - 1] + minDistance
+		) {
+			// No space, try moving the other coordinate instead.
+			vPos *= -1;
+			shift *= -1;
+			array = vPos === -1 ? bottomOffsets : topOffsets;
+			value = array[index] + shift;
+		}
+		if (value < minDistance || value > length - minDistance) {
+			// No move possible.
+			continue;
+		}
+		array[index] = value;
+
+		// Move other lines as needed.
+		while (array[index] > array[index + 1] - minDistance) {
+			if (Math.sign(deviations[index]) + Math.sign(deviations[index + 1]) === 0) {
+				// Lines moving in opposite directions;
+				array[index] = value - shift;
+				break;
 			}
-			while (array[index] < array[index - 1] + minDistance) {
-				index--;
-				array[index]--;
+			index++;
+			array[index]++;
+		}
+		while (array[index] < array[index - 1] + minDistance) {
+			if (Math.sign(deviations[index]) + Math.sign(deviations[index - 1]) === 0) {
+				// Lines moving in opposite directions;
+				array[index] = value - shift;
+				break;
 			}
+			index--;
+			array[index]--;
 		}
 	}
 
@@ -81,15 +106,74 @@ function linePartition(length, numPartitions, centreVariation = 0, minDeviation 
 	return [topOffsets, bottomOffsets];
 }
 
-const [topX, bottomX] = linePartition(pictureSize, 12, 0.5, 0.2, 0.6, 500, 32);
-const [leftY, rightY] = linePartition(pictureSize, 12, 0, 0, 0, 500, 32);
+const numColumns = 12;
+const numRows = numColumns;
+const [topX, bottomX] = linePartition(pictureSize, numColumns, 0.5, 0.2, 0.6, 500, 32);
+const [leftY, rightY] = linePartition(pictureSize, numRows, 0, 0, 0, 500, 32);
 
-for (let i = 0; i < topX.length; i++) {
-	context.moveTo(topX[i], 0);
-	context.lineTo(bottomX[i], pictureSize);
+function drawGrid() {
+	context.beginPath();
+	for (let i = 0; i < topX.length; i++) {
+		context.moveTo(topX[i], 0);
+		context.lineTo(bottomX[i], pictureSize);
+	}
+	for (let i = 0; i < leftY.length; i++) {
+		context.moveTo(0, leftY[i]);
+		context.lineTo(pictureSize, rightY[i]);
+	}
+	context.stroke();
 }
-for (let i = 0; i < leftY.length; i++) {
-	context.moveTo(0, leftY[i]);
-	context.lineTo(pictureSize, rightY[i]);
+
+function getCoordinate(col, row) {
+	// x = b1 * y + c1	=>	a1 * x + b1 * y + c1 = 0 for a1 = -1
+	const b1 = (bottomX[col] - topX[col]) / pictureSize;
+	const c1 = topX[col];
+	const a1 = -1;
+	// y = a2 * x + c2	=> a2 * x + b2 * y + c2 = 0 for b2 = -1
+	const a2 = (rightY[row] - leftY[row]) / pictureSize;
+	const c2 = leftY[row];
+	const b2 = -1;
+	// https://www.cuemath.com/geometry/intersection-of-two-lines/
+	const x = (b1 * c2 - b2 * c1) / (a1 * b2 - a2 * b1);
+	const y = (c1 * a2 - c2 * a1) / (a1 * b2 - a2 * b1);
+	return [x, y];
 }
-context.stroke();
+
+function binaryString(length) {
+	const array = new Array(length);
+	for (let i = 0; i < length; i++) {
+		array[i] = Math.trunc(Math.random() * 2);
+	}
+	return array;
+}
+
+const columns = binaryString(numColumns);
+const rows = binaryString(numRows);
+
+function hasStitch(array, arrayIndex, transverseIndex) {
+	const pattern = array[arrayIndex];
+	return (pattern + transverseIndex) % 2;
+}
+
+function straightStitch() {
+	context.beginPath();
+	for (let i = 0; i < numColumns - 1; i++) {
+		for (let j = 0; j < numRows; j++) {
+			if (hasStitch(columns, i, j)) {
+				context.moveTo(...getCoordinate(i + 1, j));
+				context.lineTo(...getCoordinate(i + 1, j + 1));
+			}
+		}
+	}
+	for (let j = 0; j < numRows - 1; j++) {
+		for (let i = 0; i < numColumns; i++) {
+			if (hasStitch(rows, j, i)) {
+				context.moveTo(...getCoordinate(i, j + 1));
+				context.lineTo(...getCoordinate(i + 1, j + 1));
+			}
+		}
+	}
+	context.stroke();
+}
+
+straightStitch();
