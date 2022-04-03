@@ -104,7 +104,7 @@ function linePartition(length, numPartitions, centreVariation = 0, minDeviation 
 	return [topOffsets, bottomOffsets];
 }
 
-const numColumns = 18;
+const numColumns = 17;
 const numRows = numColumns;
 const [topX, bottomX] = linePartition(pictureSize, numColumns, 0.5, 0.2, 0.6, 500, pictureSize / 90);
 const [leftY, rightY] = linePartition(pictureSize, numRows, 0, 0, 0, 500, pictureSize / 90);
@@ -140,19 +140,71 @@ function hasStitch(array, arrayIndex, transverseIndex) {
 	return (pattern + transverseIndex) % 2;
 }
 
+class PolyLine {
+	constructor(x1, y1, x2, y2) {
+		this.xCoords = [x1, x2];
+		this.yCoords = [y1, y2];
+	}
+
+	join(polyline) {
+		const thisNumPoints = this.xCoords.length;
+		const thisX1 = this.xCoords[0];
+		const thisY1 = this.yCoords[0];
+		const thisLastX = this.xCoords[thisNumPoints - 1];
+		const thisLastY = this.yCoords[thisNumPoints - 1];
+		const lineNumPoints = polyline.xCoords.length;
+		const lineX1 = polyline.xCoords[0];
+		const lineY1 = polyline.yCoords[0];
+		const lineLastX = polyline.xCoords[lineNumPoints - 1];
+		const lineLastY = polyline.yCoords[lineNumPoints - 1];
+
+		if (thisLastX === lineX1 && thisLastY === lineY1) {
+			// End of this sequence joins onto the beginning of the other sequence: concatenate
+			this.xCoords = this.xCoords.concat(polyline.xCoords.slice(1));
+			this.yCoords = this.yCoords.concat(polyline.yCoords.slice(1));
+			return true;
+		} else if (thisLastX === lineLastX && thisLastY === lineLastY) {
+			// End of this sequence joins onto the end of the other sequence: reverse other
+			// the sequence and concatenate
+			this.xCoords = this.xCoords.concat(polyline.xCoords.slice(0, -1).reverse());
+			this.yCoords = this.yCoords.concat(polyline.yCoords.slice(0, -1).reverse());
+			return true;
+		} else if (lineLastX === thisX1 && lineLastY === thisY1) {
+			// End of the other sequence joins onto the beginning of this sequence: concatenate
+			this.xCoords = polyline.xCoords.concat(this.xCoords.slice(1));
+			this.yCoords = polyline.yCoords.concat(this.yCoords.slice(1));
+			return true;
+		} else if (thisX1 === lineX1 && thisY1 === lineY1) {
+			// Beginning of the other sequence joins onto the beginning of this sequence: reverse
+			// other the sequence and concatenate
+			this.xCoords = polyline.xCoords.slice(1).reverse().concat(this.xCoords);
+			this.yCoords = polyline.yCoords.slice(1).reverse().concat(this.yCoords);
+			return true;
+		}
+		return false;
+	}
+
+	get pointString() {
+		const xCoords = this.xCoords;
+		const yCoords = this.yCoords;
+		const numPoints = xCoords.length;
+		let str = '';
+		for (let i = 0; i < numPoints; i++) {
+			str += xCoords[i] + ',' + yCoords[i] + ' ';
+		}
+		return str;
+	}
+
+}
+
 function straightStitch(svg) {
+	const polylines = [];
 	for (let i = 0; i < numColumns - 1; i++) {
 		for (let j = 0; j < numRows; j++) {
 			if (hasStitch(columns, i, j)) {
 				const [x1, y1] = getCoordinate(i + 1, j);
 				const [x2, y2] = getCoordinate(i + 1, j + 1);
-				const line =  document.createElementNS(SVG_NAMESPACE, 'line');
-				line.setAttribute('x1', x1);
-				line.setAttribute('y1', y1);
-				line.setAttribute('x2', x2);
-				line.setAttribute('y2', y2);
-				line.setAttribute('stroke', 'black');
-				svg.appendChild(line);
+				polylines.push(new PolyLine(x1, y1, x2, y2));
 			}
 		}
 	}
@@ -161,17 +213,36 @@ function straightStitch(svg) {
 			if (hasStitch(rows, j, i)) {
 				const [x1, y1] = getCoordinate(i, j + 1);
 				const [x2, y2] = getCoordinate(i + 1, j + 1);
-				const line =  document.createElementNS(SVG_NAMESPACE, 'line');
-				line.setAttribute('x1', x1);
-				line.setAttribute('y1', y1);
-				line.setAttribute('x2', x2);
-				line.setAttribute('y2', y2);
-				line.setAttribute('stroke', 'black');
-				svg.appendChild(line);
+				polylines.push(new PolyLine(x1, y1, x2, y2));
 			}
 		}
 	}
+	let numPieces = polylines.length;
+	let didJoin;
+	do {
+		didJoin = false;
+		for (let i = 0; i < numPieces; i++) {
+			const polyline1 = polylines[i];
+			for (let j = i + 1; j < numPieces; j++) {
+				const polyline2 = polylines[j];
+				if (polyline1.join(polyline2)) {
+					polylines.splice(j, 1);
+					didJoin = true;
+					numPieces--;
+					j--;
+				}
+			}
+		}
+	} while (didJoin);
+	for (let polyline of polylines) {
+		const element = document.createElementNS(SVG_NAMESPACE, 'polyline');
+		element.setAttribute('points', polyline.pointString);
+		element.setAttribute('fill', 'none');
+		element.setAttribute('stroke', 'black');
+		svg.appendChild(element);
+	}
 }
+
 
 const svg = document.createElementNS(SVG_NAMESPACE, "svg");
 svg.setAttribute('viewBox', '0 0 ' + pictureSize + ' ' + pictureSize);
