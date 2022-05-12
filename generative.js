@@ -106,8 +106,8 @@ function linePartition(length, numPartitions, centreVariation = 0, minDeviation 
 
 const numColumns = 17;
 const numRows = numColumns;
-const [topX, bottomX] = linePartition(pictureSize, numColumns, 0.5, 0.2, 0.6, 500, pictureSize / 90);
-const [leftY, rightY] = linePartition(pictureSize, numRows, 0, 0, 0, 500, pictureSize / 90);
+const [topX, bottomX] = linePartition(pictureSize, numColumns, 0.5, 0.2, 0.6, 500, pictureSize / 45);
+const [leftY, rightY] = linePartition(pictureSize, numRows, 0, 0, 0, 500, pictureSize / 45);
 
 function getCoordinate(col, row) {
 	// x = b1 * y + c1	=>	a1 * x + b1 * y + c1 = 0 for a1 = -1
